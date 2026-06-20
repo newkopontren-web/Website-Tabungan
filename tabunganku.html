@@ -1,0 +1,2217 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Tabungan Santri - Sistem Keuangan Pesantren</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS (XLSX) Library for Import/Export Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- QRious Library for Instantly Generating Client-Side QR Codes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        emerald: { 
+                            50: '#ecfdf5', 
+                            100: '#d1fae5', 
+                            200: '#a7f3d0',
+                            500: '#10b981', 
+                            600: '#059669', 
+                            700: '#047857', 
+                            800: '#065f46', 
+                            900: '#064e3b' 
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body { background-color: #f8fafc; }
+        
+        /* UKURAN KARTU DIPERBESAR (90mm x 57mm) */
+        .ktp-card {
+            width: 90mm;
+            height: 57mm;
+            color: white;
+            border-radius: 6mm;
+            position: relative;
+            overflow: hidden;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 5mm;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+        }
+
+        .bg-pattern {
+            position: absolute;
+            inset: 0;
+            opacity: 0.08;
+            background-image: radial-gradient(#ffffff 1.5px, transparent 1.5px);
+            background-size: 8px 8px;
+        }
+
+        /* TATA LETAK KHUSUS CETAK PRINTER */
+        @media print {
+            /* Memaksa browser mencetak background warna & gambar */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }
+
+            /* Sembunyikan elemen aplikasi web */
+            body * { visibility: hidden; }
+            
+            /* Sembunyikan background abu-abu saat cetak */
+            body { background: white !important; }
+
+            /* JIKA CETAK PERORANGAN */
+            body.print-single #print-area-single, 
+            body.print-single #print-area-single * { 
+                visibility: visible; 
+            }
+            body.print-single #print-area-single { 
+                position: absolute; 
+                left: 10mm; 
+                top: 10mm; 
+                margin: 0; 
+                box-shadow: none !important;
+                border: 0.2mm solid #ccc;
+            }
+
+            /* JIKA CETAK MASAL (GRID A4) - 8 KARTU PRESTISIUS */
+            body.print-all #all-cards-grid, 
+            body.print-all #all-cards-grid * { 
+                visibility: visible; 
+            }
+            body.print-all #all-cards-grid {
+                position: absolute;
+                left: 0;
+                top: 0;
+                display: grid !important;
+                grid-template-columns: repeat(2, 90mm);
+                grid-auto-rows: 57mm;
+                gap: 5mm 6mm;
+                padding: 10mm 10mm;
+                visibility: visible;
+                background: white;
+            }
+            
+            body.print-all .ktp-card {
+                box-shadow: none !important;
+                border: 0.1mm solid #ddd;
+                page-break-inside: avoid;
+            }
+            
+            @page { 
+                size: A4 portrait; 
+                margin: 0; 
+            }
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased font-sans">
+
+    <!-- Area Khusus Cetak Masal -->
+    <div id="all-cards-grid" class="hidden"></div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="fixed bottom-6 right-6 z-[150] transform translate-y-20 opacity-0 transition-all duration-300 flex items-center gap-3 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-white/10 max-w-md">
+        <span id="toast-icon" class="text-emerald-400"><i class="fa-solid fa-circle-check"></i></span>
+        <span id="toast-message" class="text-xs font-semibold">Notifikasi sistem aktif.</span>
+    </div>
+
+    <!-- SYSTEM CUSTOM CONFIRM MODAL -->
+    <div id="modal-confirm" class="hidden fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border border-slate-100 transform scale-95 transition-all duration-300 space-y-4">
+            <div class="text-center space-y-2">
+                <div class="inline-flex p-3 bg-red-50 text-red-600 rounded-full">
+                    <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+                </div>
+                <h4 id="confirm-title" class="text-sm font-extrabold text-slate-800">Konfirmasi Tindakan</h4>
+                <p id="confirm-message" class="text-xs text-slate-500">Apakah Anda yakin ingin melanjutkan tindakan ini?</p>
+            </div>
+            <div class="grid grid-cols-2 gap-3 pt-2">
+                <button type="button" id="confirm-btn-cancel" class="py-2.5 px-4 border hover:bg-slate-50 rounded-xl font-bold text-xs text-slate-500 transition">Batal</button>
+                <button type="button" id="confirm-btn-proceed" class="py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition text-xs shadow-md">Lanjutkan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="min-h-screen flex items-center justify-center bg-emerald-950 px-4 relative overflow-hidden">
+        <div class="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]"></div>
+        <div class="bg-white/95 backdrop-blur-md p-8 rounded-3xl w-full max-w-md shadow-2xl relative z-10 border border-white/20">
+            <div class="text-center mb-8">
+                <div class="inline-flex p-4 bg-emerald-50 text-emerald-700 rounded-2xl mb-3">
+                    <i class="fa-solid fa-mosque text-3xl"></i>
+                </div>
+                <h2 class="text-2xl font-extrabold text-emerald-900 tracking-tight">E-Tabungan Santri</h2>
+                <p class="text-slate-500 text-sm mt-1">Sistem Administrasi Keuangan Pondok Pesantren</p>
+            </div>
+            
+            <div id="login-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <i class="fa-solid fa-circle-exclamation text-sm"></i>
+                <span>Username atau Password salah!</span>
+            </div>
+
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Username Administrator</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400"><i class="fa-solid fa-user text-xs"></i></span>
+                        <input type="text" id="login-username" class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-emerald-500 transition" placeholder="Username Anda" required>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Password Kredensial</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400"><i class="fa-solid fa-lock text-xs"></i></span>
+                        <input type="password" id="login-password" class="w-full pl-10 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-emerald-500 transition" placeholder="Password Anda" required>
+                        <button type="button" onclick="toggleInputPasswordVisibility('login-password', this)" class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-slate-600 transition">
+                            <i class="fa-solid fa-eye-slash text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+                <button type="submit" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl shadow-lg shadow-emerald-900/20 hover:shadow-emerald-900/30 transition duration-300 text-sm mt-2">
+                    <i class="fa-solid fa-right-to-bracket mr-2"></i> Masuk Sistem
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN DASHBOARD APP LAYOUT -->
+    <div id="main-app" class="hidden min-h-screen flex flex-col lg:flex-row">
+        
+        <!-- SIDEBAR -->
+        <aside class="w-full lg:w-72 bg-emerald-950 text-slate-200 flex flex-col justify-between p-6 shrink-0 border-r border-emerald-900/50">
+            <div class="space-y-8">
+                <!-- Brand Profile -->
+                <div class="flex items-center gap-3 border-b border-emerald-900 pb-6">
+                    <img id="nav-pondok-logo" class="w-12 h-12 rounded-full bg-white object-contain p-1 shadow-inner" src="https://placehold.co/100x100/ffffff/064e3b?text=LOGO" alt="Logo">
+                    <div class="overflow-hidden">
+                        <h1 id="nav-pondok-name" class="font-extrabold text-sm text-white tracking-tight uppercase truncate max-w-[170px]">-</h1>
+                        <span class="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">E-Tabungan Santri v2</span>
+                    </div>
+                </div>
+
+                <!-- Navigation List -->
+                <nav class="space-y-1.5">
+                    <button id="btn-dashboard" onclick="switchTab('dashboard')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-800 text-white font-medium transition shadow-md">
+                        <i class="fa-solid fa-chart-pie text-sm"></i>
+                        <span class="text-sm">Dashboard Utama</span>
+                    </button>
+                    <button id="btn-santri" onclick="switchTab('santri')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-emerald-900/50 text-slate-300 hover:text-white transition font-medium">
+                        <i class="fa-solid fa-users text-sm"></i>
+                        <span class="text-sm">Anggota Santri</span>
+                    </button>
+                    <button id="btn-cetak" onclick="switchTab('cetak')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-emerald-900/50 text-slate-300 hover:text-white transition font-medium">
+                        <i class="fa-solid fa-id-card text-sm"></i>
+                        <span class="text-sm">Cetak Kartu</span>
+                    </button>
+                    <button id="btn-admin" onclick="switchTab('admin')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-emerald-900/50 text-slate-300 hover:text-white transition font-medium">
+                        <i class="fa-solid fa-user-shield text-sm"></i>
+                        <span class="text-sm">Manajemen Admin</span>
+                    </button>
+                    <button id="btn-pengaturan" onclick="switchTab('pengaturan')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-emerald-900/50 text-slate-300 hover:text-white transition font-medium">
+                        <i class="fa-solid fa-sliders text-sm"></i>
+                        <span class="text-sm">Pengaturan</span>
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Footer Sidebar Admin Status -->
+            <div class="pt-6 border-t border-emerald-900 space-y-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-900 text-emerald-300 flex items-center justify-center font-bold">
+                        <i class="fa-solid fa-user-circle text-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs font-extrabold text-white">Administrator</p>
+                        <span class="text-[10px] text-emerald-400 font-medium">Status: Online</span>
+                    </div>
+                </div>
+                <button onclick="handleLogout()" class="w-full py-2.5 bg-emerald-900/60 hover:bg-red-950 hover:text-red-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 text-slate-400">
+                    <i class="fa-solid fa-power-off text-sm"></i> Keluar Aplikasi
+                </button>
+            </div>
+        </aside>
+
+        <!-- CONTENT CONTAINER -->
+        <main class="flex-1 flex flex-col min-w-0">
+            <!-- HEADER BAR -->
+            <header class="bg-white border-b border-slate-200/80 px-8 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shrink-0">
+                <div class="space-y-0.5">
+                    <h2 id="header-title" class="text-xl font-extrabold text-slate-900 tracking-tight">Dashboard Utama</h2>
+                    <p id="header-desc" class="text-xs text-slate-500">Ringkasan aktivitas keuangan dan pengelolaan data santri.</p>
+                </div>
+            </header>
+
+            <!-- VIEW CONTAINER -->
+            <div class="flex-1 overflow-y-auto p-8">
+                
+                <!-- 1. TAB DASHBOARD -->
+                <section id="tab-dashboard" class="space-y-8">
+                    <!-- Statistics Grid Info -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div class="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex items-center gap-4">
+                            <div class="p-3.5 bg-emerald-50 text-emerald-700 rounded-2xl"><i class="fa-solid fa-wallet text-xl"></i></div>
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Kas Tabungan</span>
+                                <p id="stat-total-kas" class="text-base font-extrabold text-slate-800">Rp 0</p>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex items-center gap-4">
+                            <div class="p-3.5 bg-blue-50 text-blue-600 rounded-2xl"><i class="fa-solid fa-circle-arrow-down text-xl"></i></div>
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Setoran Hari Ini</span>
+                                <p id="stat-setoran-hari-ini" class="text-base font-extrabold text-slate-800">Rp 0</p>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex items-center gap-4">
+                            <div class="p-3.5 bg-red-50 text-red-600 rounded-2xl"><i class="fa-solid fa-circle-arrow-up text-xl"></i></div>
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tarikan Hari Ini</span>
+                                <p id="stat-tarikan-hari-ini" class="text-base font-extrabold text-slate-800">Rp 0</p>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex items-center gap-4">
+                            <div class="p-3.5 bg-indigo-50 text-indigo-600 rounded-2xl"><i class="fa-solid fa-users text-xl"></i></div>
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Anggota</span>
+                                <p id="stat-total-santri" class="text-base font-extrabold text-slate-800">0 Santri</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Core Operations Content Grid -->
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        <!-- Search & Quick Transaction Profile -->
+                        <div class="lg:col-span-7 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                            <div class="space-y-4">
+                                <div class="border-b pb-4">
+                                    <h3 class="font-extrabold text-slate-800">Transaksi Cepat</h3>
+                                    <p class="text-xs text-slate-400">Temukan profil anggota dengan mengetikkan NIS atau Nama.</p>
+                                </div>
+                                <div class="relative">
+                                    <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400"><i class="fa-solid fa-magnifying-glass text-sm"></i></span>
+                                    <input type="text" id="dash-search-input" oninput="handleDashSearch()" class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-emerald-500 transition font-medium" placeholder="Ketikkan NIS atau Nama Lengkap Santri...">
+                                </div>
+                            </div>
+
+                            <!-- Placeholder Info Status -->
+                            <div id="search-hint" class="py-12 flex flex-col items-center justify-center text-center space-y-2">
+                                <div class="p-4 bg-slate-50 text-slate-300 rounded-full"><i class="fa-solid fa-id-badge text-3xl"></i></div>
+                                <p class="text-xs font-semibold text-slate-400">Profil santri yang Anda cari akan muncul di sini.</p>
+                            </div>
+
+                            <!-- Result Profile Card -->
+                            <div id="dash-search-result" class="hidden mt-6 bg-slate-50 border rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row gap-5">
+                                <img id="search-card-foto" class="w-24 h-32 bg-slate-200 rounded-xl object-cover border border-slate-200 shrink-0 self-center sm:self-start" src="" alt="Siswa">
+                                <div class="flex-1 flex flex-col justify-between space-y-4">
+                                    <div class="text-xs space-y-1">
+                                        <h4 id="search-card-nama" class="text-sm font-extrabold text-slate-800">Nama Lengkap</h4>
+                                        <p class="text-slate-400">NIS: <span id="search-card-nis" class="font-semibold text-slate-600">202601</span> | No Tab: <span id="search-card-notab" class="font-semibold text-slate-600">T-01</span></p>
+                                        <p class="text-slate-400">Asrama Kamar: <span id="search-card-kamar" class="font-semibold text-slate-600">A-01</span></p>
+                                        <p class="text-slate-400">Alamat Daerah: <span id="search-card-alamat" class="font-semibold text-slate-600">Situbondo</span></p>
+                                    </div>
+                                    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-t pt-3">
+                                        <div>
+                                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Saldo Tabungan</span>
+                                            <p id="search-card-saldo" class="text-lg font-black text-emerald-700">Rp 0</p>
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <button onclick="openTransactionModal('setor')" class="flex-1 sm:flex-initial px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5"><i class="fa-solid fa-plus-circle"></i> Setor</button>
+                                            <button onclick="openTransactionModal('tarik')" class="flex-1 sm:flex-initial px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5"><i class="fa-solid fa-minus-circle"></i> Tarik</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Recent Log Activities -->
+                        <div class="lg:col-span-5 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between border-b pb-4">
+                                    <div>
+                                        <h3 class="font-extrabold text-slate-800">Aktivitas Terbaru</h3>
+                                        <p class="text-xs text-slate-400">Daftar log 10 transaksi terakhir hari ini.</p>
+                                    </div>
+                                    <button onclick="clearHistory()" class="px-2.5 py-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition text-[10px] font-extrabold border border-dashed flex items-center gap-1"><i class="fa-solid fa-trash-can"></i> Hapus Histori</button>
+                                </div>
+                                <div id="dash-recent-transactions" class="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+                                    <!-- Dynamic rows loaded by JS -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. TAB ANGGOTA SANTRI -->
+                <section id="tab-santri" class="hidden space-y-8">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        
+                        <!-- Form Pendaftaran Santri Baru -->
+                        <div class="lg:col-span-5 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
+                            <div class="border-b pb-4">
+                                <h3 class="font-extrabold text-slate-800">Pendaftaran Anggota Baru</h3>
+                                <p class="text-xs text-slate-400">Masukkan data santri baru secara lengkap di bawah ini.</p>
+                            </div>
+
+                            <form id="form-santri" onsubmit="handleRegisterSantri(event)" class="space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Nomor NIS</label>
+                                        <input type="text" id="reg-nis" oninput="updateLiveCard()" class="w-full px-4 py-2.5 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Contoh: 202601" required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">No. Rek Tabungan</label>
+                                        <input type="text" id="reg-notab" oninput="updateLiveCard()" class="w-full px-4 py-2.5 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Contoh: T-01" required>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Nama Lengkap Santri</label>
+                                    <input type="text" id="reg-nama" oninput="updateLiveCard()" class="w-full px-4 py-2.5 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Contoh: Ahmad Fauzi" required>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Kamar / Gedung</label>
+                                        <input type="text" id="reg-kamar" oninput="updateLiveCard()" class="w-full px-4 py-2.5 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Contoh: Ghazali 01" required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Asal Daerah (Alamat)</label>
+                                        <input type="text" id="reg-alamat" oninput="updateLiveCard()" class="w-full px-4 py-2.5 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Contoh: Situbondo" required>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Saldo Awal (Rupiah)</label>
+                                        <input type="number" id="reg-saldo" class="w-full px-4 py-2.5 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500 font-bold" placeholder="Contoh: 50000" min="0" value="0" required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Unggah Foto Santri</label>
+                                        <input type="file" id="reg-foto" accept="image/*" onchange="previewImageFile(event)" class="w-full text-xs text-slate-500 file:mr-2 file:py-2.5 file:px-2.5 file:rounded-xl file:border-0 file:text-[10px] file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 transition">
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition text-xs">
+                                    <i class="fa-solid fa-user-plus mr-1.5"></i> Daftarkan Anggota Baru
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- Live Card Preview Real-time (Rasio 90mm x 57mm) -->
+                        <div class="lg:col-span-7 bg-slate-100 p-6 rounded-3xl border-4 border-dashed border-slate-200 flex flex-col items-center justify-center">
+                            <span class="text-xs font-bold text-slate-400 mb-4 uppercase tracking-wider">Live Preview Kartu Santri Baru</span>
+                            <div id="live-card" class="ktp-card bg-emerald-900 mx-auto select-none scale-[1.1] md:scale-125 my-6">
+                                <div class="bg-pattern absolute inset-0"></div>
+                                <!-- Header -->
+                                <div class="flex items-center gap-2 border-b border-white/20 pb-1.5 relative z-10">
+                                    <img id="live-card-logo" class="w-6 h-6 object-contain bg-white rounded-full p-0.5 shadow-sm" src="https://placehold.co/100x100/ffffff/064e3b?text=LOGO">
+                                    <div class="text-left">
+                                        <h4 id="live-card-pondok" class="text-[7.5px] font-extrabold tracking-wider leading-none text-white uppercase max-w-[190px] truncate">PONDOK PESANTREN DARUL IMAN</h4>
+                                        <span class="text-[5.5px] text-emerald-300 font-bold uppercase tracking-wider">KARTU TABUNGAN SANTRI DIGITAL</span>
+                                    </div>
+                                </div>
+                                <!-- Body -->
+                                <div class="flex gap-3.5 my-auto relative z-10 text-left">
+                                    <img id="live-card-foto" class="w-14 h-18 bg-slate-800 rounded border border-white/30 object-cover shrink-0" src="https://placehold.co/150x200/064e3b/ffffff?text=FOTO">
+                                    <div class="flex-1 text-[8px] space-y-0.5 text-slate-100 self-center">
+                                        <div class="grid grid-cols-12"><span class="col-span-4 text-emerald-300 font-semibold">Nama</span><span class="col-span-8">: <b id="live-card-nama-val" class="text-white">Santri Baru</b></span></div>
+                                        <div class="grid grid-cols-12"><span class="col-span-4 text-emerald-300 font-semibold">NIS</span><span class="col-span-8">: <b id="live-card-nis-val" class="text-white">000000</b></span></div>
+                                        <div class="grid grid-cols-12"><span class="col-span-4 text-emerald-300 font-semibold">No Tab</span><span class="col-span-8">: <b id="live-card-notab-val" class="text-white">T-00</b></span></div>
+                                        <div class="grid grid-cols-12"><span class="col-span-4 text-emerald-300 font-semibold">Kamar</span><span class="col-span-8">: <b id="live-card-kamar-val" class="text-white">Kamar-01</b></span></div>
+                                        <div class="grid grid-cols-12"><span class="col-span-4 text-emerald-300 font-semibold">Alamat</span><span class="col-span-8 truncate">: <b id="live-card-alamat-val" class="text-white">Asal Daerah</b></span></div>
+                                    </div>
+                                </div>
+                                <!-- Footer -->
+                                <div class="flex justify-between items-end border-t border-white/20 pt-1.5 relative z-10 text-left">
+                                    <p class="text-[5px] italic text-slate-200 max-w-[65%] leading-tight">"Menabung hari ini untuk masa depan yang berkah"</p>
+                                    <!-- QR Code Diperbesar w-11 h-11 -->
+                                    <img id="live-card-qr" class="w-11 h-11 bg-white rounded p-0.5 shadow-sm shrink-0" src="">
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Table List Santri Database -->
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b pb-4">
+                            <div>
+                                <h3 class="font-extrabold text-slate-800">Daftar Anggota Aktif</h3>
+                                <p class="text-xs text-slate-400">Total data anggota santri yang aktif di pesantren.</p>
+                            </div>
+                            
+                            <!-- Search & Action Excel Grid -->
+                            <div class="flex flex-wrap items-center gap-3">
+                                <div class="relative">
+                                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><i class="fa-solid fa-magnifying-glass text-xs"></i></span>
+                                    <input type="text" id="list-search-input" oninput="handleListSearch()" class="pl-8 pr-3 py-1.5 border rounded-xl text-xs outline-none focus:ring-1 focus:ring-emerald-500 font-medium w-48 sm:w-56" placeholder="Cari Anggota...">
+                                </div>
+                                <button onclick="downloadExcelTemplate()" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl font-bold text-xs transition border border-blue-200"><i class="fa-solid fa-file-arrow-down mr-1"></i> Template</button>
+                                
+                                <label class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl font-bold text-xs transition border border-emerald-200 cursor-pointer flex items-center gap-1">
+                                    <i class="fa-solid fa-file-excel"></i> Import Excel
+                                    <input type="file" id="excel-file" accept=".xlsx, .xls" onchange="importFromExcel(event)" class="hidden">
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Data Table -->
+                        <div class="overflow-x-auto rounded-2xl border border-slate-100">
+                            <table class="w-full text-left border-collapse">
+                                <thead class="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b">
+                                    <tr>
+                                        <th class="py-3 px-4">Nama / NIS</th>
+                                        <th class="py-3 px-4">No. Tabungan</th>
+                                        <th class="py-3 px-4">Kamar</th>
+                                        <th class="py-3 px-4 text-right">Saldo Saat Ini</th>
+                                        <th class="py-3 px-4 text-center">Aksi Operasi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-santri-body" class="divide-y text-xs">
+                                    <!-- Dynamic table content generated by Javascript -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination Footer Navigation -->
+                        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-3 text-xs text-slate-500 font-medium">
+                            <div class="flex items-center gap-2">
+                                <span>Tampilkan</span>
+                                <select onchange="changeRowsPerPage(this.value)" class="px-2 py-1 border rounded-lg bg-white text-slate-700 outline-none">
+                                    <option value="10">10 Baris</option>
+                                    <option value="25">25 Baris</option>
+                                    <option value="50">50 Baris</option>
+                                    <option value="100">100 Baris</option>
+                                </select>
+                                <span>dari <span id="pag-info-start">0</span>-<span id="pag-info-end">0</span> dari <b id="pag-info-total" class="text-slate-800">0</b> data</span>
+                            </div>
+                            <div id="pag-buttons-container" class="flex items-center gap-1">
+                                <!-- Dynamic pagination pages generated by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 3. TAB PUSAT CETAK KARTU -->
+                <section id="tab-cetak" class="hidden space-y-8">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        
+                        <!-- Configuration Card Styles -->
+                        <div class="lg:col-span-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
+                            <div class="border-b pb-4">
+                                <h3 class="font-extrabold text-slate-800">Kustomisasi Kartu</h3>
+                                <p class="text-xs text-slate-400">Atur skema warna dasar latar belakang cetak kartu.</p>
+                            </div>
+
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Pilih Skema Warna Tema</label>
+                                    <div class="grid grid-cols-5 gap-2">
+                                        <button onclick="setCardTheme('bg-emerald-900', 'text-emerald-300')" class="w-full h-8 rounded-lg bg-emerald-900 border border-slate-300 hover:scale-105 transition" title="Emerald"></button>
+                                        <button onclick="setCardTheme('bg-indigo-900', 'text-indigo-300')" class="w-full h-8 rounded-lg bg-indigo-900 border border-slate-300 hover:scale-105 transition" title="Blue Navy"></button>
+                                        <button onclick="setCardTheme('bg-red-950', 'text-red-300')" class="w-full h-8 rounded-lg bg-red-950 border border-slate-300 hover:scale-105 transition" title="Burgundy"></button>
+                                        <button onclick="setCardTheme('bg-amber-950', 'text-amber-300')" class="w-full h-8 rounded-lg bg-amber-950 border border-slate-300 hover:scale-105 transition" title="Golden Wood"></button>
+                                        <button onclick="setCardTheme('bg-slate-900', 'text-slate-400')" class="w-full h-8 rounded-lg bg-slate-900 border border-slate-300 hover:scale-105 transition" title="Charcoal"></button>
+                                    </div>
+                                </div>
+
+                                <div class="border-t pt-4">
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">1. Cetak Perorangan</label>
+                                    <!-- INPUT CARI NIS / NAMA UNTUK CETAK KARTU -->
+                                    <div class="relative mb-3">
+                                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                                            <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                                        </span>
+                                        <input type="text" id="search-cetak-input" oninput="filterCetakDropdown()" class="w-full pl-8 pr-3 py-2 border rounded-xl text-xs outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Cari NIS atau Nama Santri...">
+                                    </div>
+                                    <select id="select-santri-cetak" onchange="renderSingleCard()" class="w-full px-3 py-2 border rounded-xl text-xs outline-none mb-3"></select>
+                                    <button onclick="printSingle()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition text-xs">
+                                        <i class="fa-solid fa-print mr-2"></i> Cetak Kartu Ini
+                                    </button>
+                                </div>
+
+                                <!-- CETAK MASAL GRID DENGAN FITUR PAGINATION KHUSUS A4 -->
+                                <div class="border-t pt-4 space-y-3">
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">2. Cetak Masal (Grid A4 - 8 Kartu)</label>
+                                    
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-500 mb-1">Pilih Lembar Cetak (Halaman):</label>
+                                        <select id="select-page-cetak" class="w-full px-3 py-2 border rounded-xl text-xs outline-none bg-white">
+                                            <!-- Diisi dinamis oleh JS: Lembar 1 (Santri 1-8), Lembar 2 (Santri 9-16), dst -->
+                                        </select>
+                                    </div>
+
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <button onclick="printAllPage()" class="py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition text-xs flex items-center justify-center gap-1.5">
+                                            <i class="fa-solid fa-print"></i> Cetak Lembar Ini
+                                        </button>
+                                        <button onclick="printAll()" class="py-3 bg-slate-700 hover:bg-slate-800 text-white font-bold rounded-xl shadow-md transition text-xs flex items-center justify-center gap-1.5" title="Mencetak seluruh database sekaligus (Hanya direkomendasikan jika data sedikit)">
+                                            <i class="fa-solid fa-layer-group"></i> Cetak Semua Data
+                                        </button>
+                                    </div>
+                                    <p class="text-[10px] text-slate-400 mt-1 italic text-center leading-normal">
+                                        *Sangat disarankan mencetak per lembar untuk mencegah browser lambat / lag saat data mencapai ribuan santri.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Preview Area (Dimensi 90mm x 57mm) -->
+                        <div class="lg:col-span-8 flex flex-col items-center justify-center p-8 bg-slate-100 rounded-3xl border-4 border-dashed border-slate-200">
+                            <span class="text-xs font-bold text-slate-400 mb-6 uppercase tracking-wider">Live Preview Sebelum Cetak</span>
+                            
+                            <!-- Printable single card template -->
+                            <div id="print-area-single" class="ktp-card bg-emerald-900 shadow-2xl scale-[1.1] md:scale-125 my-8">
+                                <div class="bg-pattern absolute inset-0"></div>
+                                <!-- Header -->
+                                <div class="flex items-center gap-2 border-b border-white/20 pb-2 relative z-10">
+                                    <img class="card-logo-img w-8 h-8 object-contain bg-white rounded-full p-0.5 shadow-sm" src="">
+                                    <div class="text-left">
+                                        <h4 class="card-pondok-text text-[9px] font-extrabold tracking-wider leading-none uppercase max-w-[200px] truncate text-white">-</h4>
+                                        <span class="text-[7px] text-emerald-300 font-bold uppercase tracking-wider card-sub-text">KARTU TABUNGAN SANTRI DIGITAL</span>
+                                    </div>
+                                </div>
+                                <!-- Body -->
+                                <div class="flex gap-4 my-auto relative z-10 text-left">
+                                    <img id="preview-single-foto" class="w-16 h-20 bg-slate-800 rounded border border-white/30 object-cover shrink-0" src="">
+                                    <div class="flex-1 text-[9.5px] space-y-0.5 text-slate-100 self-center">
+                                        <div class="grid grid-cols-12"><span class="col-span-4 text-emerald-300 font-semibold card-lbl-text">Nama</span><span class="col-span-8">: <b id="preview-single-nama" class="text-white"></b></span></div>
+                                        <div class="grid grid-cols-12"><span class="col-span-4 text-emerald-300 font-semibold card-lbl-text">NIS</span><span class="col-span-8">: <b id="preview-single-nis" class="text-white"></b></span></div>
+                                        <div class="grid grid-cols-12"><span class="col-span-4 text-emerald-300 font-semibold card-lbl-text">No Tab</span><span class="col-span-8">: <b id="preview-single-notab" class="text-white"></b></span></div>
+                                        <div class="grid grid-cols-12"><span class="col-span-4 text-emerald-300 font-semibold card-lbl-text">Kamar</span><span class="col-span-8">: <b id="preview-single-kamar" class="text-white"></b></span></div>
+                                        <div class="grid grid-cols-12"><span class="col-span-4 text-emerald-300 font-semibold card-lbl-text">Alamat</span><span class="col-span-8 truncate">: <b id="preview-single-alamat" class="text-white"></b></span></div>
+                                    </div>
+                                </div>
+                                <!-- Footer -->
+                                <div class="flex justify-between items-end border-t border-white/20 pt-1.5 relative z-10 text-left">
+                                    <p class="text-[5.5px] italic text-emerald-200 card-motto-text max-w-[65%] leading-tight">"Menabung hari ini untuk masa depan yang berkah"</p>
+                                    <!-- QR Code Tunggal Diperbesar w-14 h-14 -->
+                                    <img id="preview-single-qr" class="w-14 h-14 bg-white rounded p-0.5 shadow-sm shrink-0" src="">
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </section>
+
+                <!-- 4. TAB MANAJEMEN ADMIN -->
+                <section id="tab-admin" class="hidden space-y-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        
+                        <!-- Form Daftar Admin Baru -->
+                        <div class="lg:col-span-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
+                            <div class="border-b pb-4">
+                                <h3 class="font-extrabold text-slate-800">Daftarkan Admin Baru</h3>
+                                <p class="text-xs text-slate-400">Tambah akun administrator atau petugas kasir pesantren baru.</p>
+                            </div>
+
+                            <form id="form-admin" onsubmit="handleRegisterAdmin(event)" class="space-y-4">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Nama Lengkap Pengurus</label>
+                                    <input type="text" id="adm-nama" class="w-full px-4 py-2.5 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Contoh: Ust. H. Fauzan" required>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Username Masuk</label>
+                                    <input type="text" id="adm-username" class="w-full px-4 py-2.5 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500 font-mono" placeholder="Contoh: fauzan99" required>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Password Kredensial</label>
+                                    <div class="relative">
+                                        <input type="password" id="adm-password" class="w-full pl-4 pr-10 py-2.5 border rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500 font-mono" placeholder="Password admin" required>
+                                        <button type="button" onclick="toggleInputPasswordVisibility('adm-password', this)" class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition">
+                                            <i class="fa-solid fa-eye-slash text-xs"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition text-xs">
+                                    <i class="fa-solid fa-user-shield mr-1.5"></i> Buat Kredensial Admin
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- Tabel Pengguna Pengurus Aktif -->
+                        <div class="lg:col-span-8 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+                            <div class="border-b pb-4">
+                                <h3 class="font-extrabold text-slate-800">Daftar Administrator Aktif</h3>
+                                <p class="text-xs text-slate-400">Daftar kredensial yang diizinkan untuk mengakses backend sistem.</p>
+                            </div>
+
+                            <div class="overflow-x-auto rounded-2xl border border-slate-100">
+                                <table class="w-full text-left border-collapse">
+                                    <thead class="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b">
+                                        <tr>
+                                            <th class="py-3 px-4">Nama Lengkap</th>
+                                            <th class="py-3 px-4">Username</th>
+                                            <th class="py-3 px-4">Password</th>
+                                            <th class="py-3 px-4 text-center">Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="table-admin-body" class="divide-y text-xs">
+                                        <!-- Dynamic admin rows generated by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    </div>
+                </section>
+
+                <!-- 5. TAB PENGATURAN -->
+                <section id="tab-pengaturan" class="hidden space-y-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        
+                        <!-- Configuration Identity -->
+                        <div class="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
+                            <div class="border-b pb-4 flex items-center justify-between">
+                                <div>
+                                    <h3 class="font-extrabold text-slate-800">Identitas Pondok Pesantren</h3>
+                                    <p class="text-xs text-slate-500">Sesuaikan dengan identitas pondok Anda sendiri.</p>
+                                </div>
+                                <span class="text-[10px] bg-emerald-50 text-emerald-700 font-extrabold px-2.5 py-1 rounded-full flex items-center gap-1.5 shrink-0 border border-emerald-100 shadow-sm">
+                                    <i class="fa-solid fa-floppy-disk animate-pulse"></i> Auto Save
+                                </span>
+                            </div>
+
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Nama Pondok Pesantren</label>
+                                    <input type="text" id="cfg-pondok-name" oninput="updateIdentity()" class="w-full px-4 py-2 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500" value="PONDOK PESANTREN DARUL IMAN">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 uppercase mb-2">URL Logo Pondok (Rekomendasi PNG Transparan)</label>
+                                    <input type="text" id="cfg-pondok-logo" oninput="updateIdentity()" class="w-full px-4 py-2 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500" value="https://placehold.co/100x100/ffffff/064e3b?text=LOGO">
+                                </div>
+                                <div class="p-4 bg-emerald-50 rounded-2xl flex items-center gap-4">
+                                    <img id="cfg-preview-logo" src="https://placehold.co/100x100/ffffff/064e3b?text=LOGO" class="w-12 h-12 object-contain bg-white rounded-full p-1 shadow-sm">
+                                    <div class="text-xs text-emerald-800 font-medium">
+                                        <p class="font-bold">Identitas Kustom</p>
+                                        <p class="text-[11px] text-emerald-600/80 leading-normal mt-0.5">Nama dan logo di atas akan disinkronkan ke seluruh template kartu dan dashboard secara otomatis.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Google Sheets Sync Guide -->
+                        <div class="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
+                            <div class="border-b pb-4">
+                                <h3 class="font-extrabold text-slate-800">Integrasi Google Sheets</h3>
+                                <p class="text-xs text-slate-500">Hubungkan database ini ke akun Google Spreadsheet Anda.</p>
+                            </div>
+
+                            <div class="space-y-4 text-xs text-slate-600 leading-relaxed">
+                                <p>Sistem ini dirancang untuk dapat terhubung dengan **Google Apps Script**. Ikuti langkah berikut:</p>
+                                <ol class="list-decimal list-inside space-y-2 pl-1">
+                                    <li>Buat **Google Spreadsheet** baru di Drive Anda.</li>
+                                    <li>Buka menu **Ekstensi > Apps Script**.</li>
+                                    <li>Tempel (Paste) skrip backend Apps Script yang Anda buat.</li>
+                                    <li>Klik **Terapkan > Web App (Aplikasi Web)**, setel akses ke *"Siapa saja (Anyone)"*.</li>
+                                    <li>Salin URL Web App dari Google Script dan simpan di kolom berikut untuk diaktifkan:</li>
+                                </ol>
+                                
+                                <div class="space-y-2 pt-2">
+                                    <label class="block text-xs font-bold text-slate-500 uppercase">Google Apps Script Web App URL</label>
+                                    <input type="text" id="cfg-sheet-url" class="w-full px-4 py-2 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500" placeholder="https://script.google.com/macros/s/.../exec">
+                                    <button onclick="saveSyncUrl()" class="px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold text-xs hover:bg-emerald-700 transition">
+                                        Simpan URL Sinkronisasi
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Google Script Code Helper (For read-only reference) -->
+                        <div class="lg:col-span-2 bg-slate-900 p-6 rounded-3xl text-slate-300 space-y-4">
+                            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                                <h4 class="font-extrabold text-white text-sm">Kode Backend Google Apps Script</h4>
+                                <button onclick="copyAppsScriptCode()" class="px-3 py-1 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition text-xs font-bold">
+                                    <i class="fa-solid fa-copy mr-1"></i> Salin Kode
+                                </button>
+                            </div>
+                            <pre class="text-[10px] bg-slate-950 p-4 rounded-xl overflow-x-auto max-h-[160px] font-mono leading-relaxed" id="apps-script-code">
+/* KODE GOOGLE APPS SCRIPT BACKEND */
+function doPost(e) {
+  var params = JSON.parse(e.postData.contents);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  if (params.action == "addSantri") {
+    var sheet = ss.getSheetByName("Santri") || ss.insertSheet("Santri");
+    if (sheet.getLastRow() == 0) {
+      sheet.appendRow(["NIS", "No_Tabungan", "Nama", "Kamar", "Alamat", "Foto", "Saldo"]);
+    }
+    // Update: Gunakan params.saldo alih-alih hardcode nilai 0
+    sheet.appendRow([params.nis, params.notab, params.nama, params.kamar, params.alamat, params.foto, Number(params.saldo || 0)]);
+    return ContentService.createTextOutput(JSON.stringify({status: "success", message: "Santri terdaftar"})).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  if (params.action == "addTransaction") {
+    var sheet = ss.getSheetByName("Transaksi") || ss.insertSheet("Transaksi");
+    if (sheet.getLastRow() == 0) {
+      sheet.appendRow(["ID_Transaksi", "Tanggal", "NIS", "Jenis", "Jumlah", "Keterangan"]);
+    }
+    sheet.appendRow([params.id, params.tanggal, params.nis, params.jenis, params.jumlah, params.keterangan]);
+    
+    // Update saldo di sheet Santri
+    var santriSheet = ss.getSheetByName("Santri");
+    var data = santriSheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0] == params.nis) {
+        var currentSaldo = Number(data[i][6]) || 0;
+        var change = Number(params.jumlah);
+        var newSaldo = params.jenis == "Setor" ? currentSaldo + change : currentSaldo - change;
+        santriSheet.getRange(i+1, 7).setValue(newSaldo);
+        break;
+      }
+    }
+    return ContentService.createTextOutput(JSON.stringify({status: "success", message: "Transaksi dicatat"})).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+                            </pre>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL POPUP TRANSAKSI -->
+    <div id="modal-transaction" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100 transform scale-95 transition-all duration-300">
+            <div class="flex items-center justify-between border-b pb-4 mb-4">
+                <h4 id="modal-title" class="text-base font-extrabold text-slate-800">Setor Tabungan</h4>
+                <button type="button" onclick="closeTransactionModal()" class="text-slate-400 hover:text-slate-600 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            
+            <form onsubmit="handleProcessTransaction(event)" class="space-y-4">
+                <input type="hidden" id="modal-tx-type">
+                
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Identitas Santri</label>
+                    <div class="p-3 bg-slate-50 border rounded-xl">
+                        <p class="text-sm font-bold text-slate-800" id="modal-santri-nama">-</p>
+                        <p class="text-[11px] text-slate-500">NIS: <span id="modal-santri-nis">-</span> | No Tab: <span id="modal-santri-notab">-</span></p>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Jumlah (Rupiah)</label>
+                    <input type="number" id="modal-amount" class="w-full px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500 font-bold" placeholder="Contoh: 50000" required>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Keterangan (Opsional)</label>
+                    <input type="text" id="modal-desc" class="w-full px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Contoh: Sangu Tambahan" required>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button type="button" onclick="closeTransactionModal()" class="py-2.5 border hover:bg-slate-50 rounded-xl font-bold text-xs text-slate-500 transition">Batal</button>
+                    <button type="submit" id="modal-submit-btn" class="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition text-xs shadow-md">Proses</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL POPUP EDIT SANTRI -->
+    <div id="modal-edit-santri" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100 transform scale-95 transition-all duration-300">
+            <div class="flex items-center justify-between border-b pb-4 mb-4">
+                <h4 class="text-base font-extrabold text-slate-800">Edit Data Anggota</h4>
+                <button type="button" onclick="closeEditModal()" class="text-slate-400 hover:text-slate-600 transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            
+            <form onsubmit="handleSaveEdit(event)" class="space-y-4">
+                <input type="hidden" id="edit-orig-nis">
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">NIS (Terkunci)</label>
+                        <input type="text" id="edit-nis" class="w-full px-3 py-2 text-sm bg-slate-100 border rounded-xl outline-none text-slate-500 font-bold" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">No Tabungan</label>
+                        <input type="text" id="edit-notab" class="w-full px-3 py-2 text-sm border rounded-xl outline-none focus:ring-2 focus:ring-emerald-500" required>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nama Lengkap</label>
+                    <input type="text" id="edit-nama" class="w-full px-3 py-2 text-sm border rounded-xl outline-none focus:ring-2 focus:ring-emerald-500" required>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Kamar / Gedung</label>
+                        <input type="text" id="edit-kamar" class="w-full px-3 py-2 text-sm border rounded-xl outline-none focus:ring-2 focus:ring-emerald-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Asal Daerah (Alamat)</label>
+                        <input type="text" id="edit-alamat" class="w-full px-3 py-2 text-sm border rounded-xl outline-none focus:ring-2 focus:ring-emerald-500" required>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Saldo Tabungan (Rupiah)</label>
+                        <input type="number" id="edit-saldo" class="w-full px-3 py-2 text-sm border rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-700" min="0" required>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Foto Santri</label>
+                        <div class="flex items-center gap-3">
+                            <img id="edit-preview-foto" class="w-12 h-16 bg-slate-100 rounded-xl border object-cover" src="">
+                            <input type="file" id="edit-foto-input" accept="image/*" onchange="previewEditImageFile(event)" class="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 transition">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button type="button" onclick="closeEditModal()" class="py-2.5 border hover:bg-slate-50 rounded-xl font-bold text-xs text-slate-500 transition">Batal</button>
+                    <button type="submit" class="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition text-xs shadow-md">Simpan Perubahan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- CODE CONTROLLER (JAVASCRIPT) -->
+    <script>
+        // SEED DATA INITIALIZATION
+        const initialSantri = [
+            { nis: "202601", notab: "T-01", nama: "Ahmad Fauzi", kamar: "Ghazali 01", alamat: "Situbondo", foto: "https://placehold.co/150x200/064e3b/ffffff?text=Ahmad", saldo: 150000 },
+            { nis: "202602", notab: "T-02", nama: "Budi Santoso", kamar: "Ghazali 02", alamat: "Bondowoso", foto: "https://placehold.co/150x200/064e3b/ffffff?text=Budi", saldo: 320000 },
+            { nis: "202603", notab: "T-03", nama: "Zainal Arifin", kamar: "Ghazali 03", alamat: "Banyuwangi", foto: "https://placehold.co/150x200/064e3b/ffffff?text=Zainal", saldo: 50000 },
+            { nis: "202604", notab: "T-04", nama: "Siti Aminah", kamar: "Aisyah 01", alamat: "Malang", foto: "https://placehold.co/150x200/064e3b/ffffff?text=Siti", saldo: 500000 },
+            { nis: "202605", notab: "T-05", nama: "Umar Faruq", kamar: "Ghazali 04", alamat: "Surabaya", foto: "https://placehold.co/150x200/064e3b/ffffff?text=Umar", saldo: 120000 },
+            { nis: "202606", notab: "T-06", nama: "Laila Majnun", kamar: "Aisyah 02", alamat: "Jember", foto: "https://placehold.co/150x200/064e3b/ffffff?text=Laila", saldo: 45000 },
+            { nis: "202607", notab: "T-07", nama: "Hasan Basri", kamar: "Ghazali 05", alamat: "Probolinggo", foto: "https://placehold.co/150x200/064e3b/ffffff?text=Hasan", saldo: 850000 }
+        ];
+
+        const initialTransaksi = [
+            { id: "TX-01", tanggal: "2026-05-22 09:12:00", nis: "202601", jenis: "Setor", jumlah: 150000, keterangan: "Setoran Awal" },
+            { id: "TX-02", tanggal: "2026-05-22 10:15:00", nis: "202602", jenis: "Setor", jumlah: 320000, keterangan: "Uang Bekal" },
+            { id: "TX-03", tanggal: "2026-05-22 11:45:00", nis: "202604", jenis: "Setor", jumlah: 500000, keterangan: "Sangu Bulanan" }
+        ];
+
+        const initialAdmin = [
+            { username: "admin", password: "admin", nama: "Administrator Utama" }
+        ];
+
+        // LOAD DATABASE FROM LOCAL STORAGE (OR SEED)
+        let dbSantri = JSON.parse(localStorage.getItem('dbSantri')) || initialSantri;
+        let dbTransaksi = JSON.parse(localStorage.getItem('dbTransaksi')) || initialTransaksi;
+        let dbAdmin = JSON.parse(localStorage.getItem('dbAdmin')) || initialAdmin;
+        
+        // PAGINATION STATE VARIABLES
+        let currentPage = 1;
+        let rowsPerPage = 10;
+        let filteredSantri = [...dbSantri];
+
+        let activeThemeClass = 'bg-emerald-900';
+        let activeThemeSubClass = 'text-emerald-300';
+
+        let tempEditBase64Photo = "";
+
+        // PONDOK CONFIGURATION
+        let pondokConfig = JSON.parse(localStorage.getItem('pondokConfig')) || {
+            name: "PONDOK PESANTREN DARUL IMAN",
+            logo: "https://placehold.co/100x100/ffffff/064e3b?text=LOGO",
+            syncUrl: ""
+        };
+
+        // SESSION STATE
+        let currentUser = sessionStorage.getItem('adminUser') || null;
+
+        // HIGH-RESOLUTION LOCAL OFFLINE QR CODE GENERATOR (UPGRADED SIZE & CORRECTION)
+        function generateQRCodeURL(text) {
+            try {
+                const qr = new QRious({
+                    value: text,
+                    size: 250, // High density resolution for crisp physical prints
+                    level: 'H' // High error tolerance to ensure effortless scanning
+                });
+                return qr.toDataURL();
+            } catch (err) {
+                console.error("QR Code generation error:", err);
+                return `https://placehold.co/150x150/ffffff/000000?text=${text}`;
+            }
+        }
+
+        // APPLICATION ONLOAD BOOTSTRAPPING
+        window.onload = function() {
+            initApp();
+        };
+
+        function initApp() {
+            // Restore forms with saved configurations
+            const cfgName = document.getElementById('cfg-pondok-name');
+            const cfgLogo = document.getElementById('cfg-pondok-logo');
+            const cfgUrl = document.getElementById('cfg-sheet-url');
+
+            if (cfgName && pondokConfig.name) cfgName.value = pondokConfig.name;
+            if (cfgLogo && pondokConfig.logo) cfgLogo.value = pondokConfig.logo;
+            if (cfgUrl && pondokConfig.syncUrl) cfgUrl.value = pondokConfig.syncUrl;
+
+            saveToStorage();
+            filteredSantri = [...dbSantri];
+            updateIdentity();
+            checkAuth();
+            renderStats();
+            renderRecentLogs();
+            updateDropdown();
+            renderSingleCard();
+            renderAdminTable();
+
+            // Setup Custom Dialog Handlers
+            const cancelBtn = document.getElementById('confirm-btn-cancel');
+            if (cancelBtn) {
+                cancelBtn.onclick = closeCustomConfirm;
+            }
+            
+            const proceedBtn = document.getElementById('confirm-btn-proceed');
+            if (proceedBtn) {
+                proceedBtn.onclick = () => {
+                    if (typeof onConfirmProceed === 'function') {
+                        onConfirmProceed();
+                    }
+                    closeCustomConfirm();
+                };
+            }
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('dbSantri', JSON.stringify(dbSantri));
+            localStorage.setItem('dbTransaksi', JSON.stringify(dbTransaksi));
+            localStorage.setItem('pondokConfig', JSON.stringify(pondokConfig));
+            localStorage.setItem('dbAdmin', JSON.stringify(dbAdmin));
+        }
+
+        let onConfirmProceed = null;
+
+        function showCustomConfirm(title, message, onProceed) {
+            const elTitle = document.getElementById('confirm-title');
+            const elMsg = document.getElementById('confirm-message');
+            const elModal = document.getElementById('modal-confirm');
+
+            if (elTitle) elTitle.innerText = title;
+            if (elMsg) elMsg.innerText = message;
+            onConfirmProceed = onProceed;
+            if (elModal) elModal.classList.remove('hidden');
+        }
+
+        function closeCustomConfirm() {
+            const elModal = document.getElementById('modal-confirm');
+            if (elModal) elModal.classList.add('hidden');
+            onConfirmProceed = null;
+        }
+
+        // AUTHENTICATION LOGIC
+        function checkAuth() {
+            const loginScr = document.getElementById('login-screen');
+            const mainApp = document.getElementById('main-app');
+            
+            if (currentUser) {
+                if (loginScr) loginScr.classList.add('hidden');
+                if (mainApp) mainApp.classList.remove('hidden');
+                switchTab('dashboard');
+            } else {
+                if (loginScr) loginScr.classList.remove('hidden');
+                if (mainApp) mainApp.classList.add('hidden');
+            }
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const user = document.getElementById('login-username').value.trim();
+            const pass = document.getElementById('login-password').value;
+            const errBox = document.getElementById('login-error');
+
+            const authenticatedAdmin = dbAdmin.find(a => a.username === user && a.password === pass);
+
+            if (authenticatedAdmin) {
+                currentUser = authenticatedAdmin.username;
+                sessionStorage.setItem('adminUser', authenticatedAdmin.username);
+                if (errBox) errBox.classList.add('hidden');
+                checkAuth();
+                showToast("Selamat Datang!", `Berhasil login sebagai ${authenticatedAdmin.nama}.`, "fa-solid fa-circle-check text-emerald-400");
+            } else {
+                if (errBox) errBox.classList.remove('hidden');
+            }
+        }
+
+        function handleLogout() {
+            currentUser = null;
+            sessionStorage.removeItem('adminUser');
+            checkAuth();
+            showToast("Keluar", "Anda telah keluar dari aplikasi.", "fa-solid fa-power-off text-amber-400");
+        }
+
+        function switchTab(id) {
+            const tabs = ['dashboard', 'santri', 'cetak', 'pengaturan', 'admin'];
+            
+            tabs.forEach(tab => {
+                const section = document.getElementById('tab-' + tab);
+                const button = document.getElementById('btn-' + tab);
+                
+                if (section) {
+                    if (tab === id) {
+                        section.classList.remove('hidden');
+                    } else {
+                        section.classList.add('hidden');
+                    }
+                }
+                
+                if (button) {
+                    if (tab === id) {
+                        button.className = "w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-800 text-white font-medium transition shadow-md";
+                    } else {
+                        button.className = "w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-emerald-900/50 text-slate-300 hover:text-white transition font-medium";
+                    }
+                }
+            });
+
+            const titleEl = document.getElementById('header-title');
+            const descEl = document.getElementById('header-desc');
+            
+            if (id === 'dashboard') {
+                if (titleEl) titleEl.innerText = "Dashboard Utama";
+                if (descEl) descEl.innerText = "Ringkasan aktivitas keuangan dan pengelolaan data santri.";
+                renderStats();
+                renderRecentLogs();
+            } else if (id === 'santri') {
+                if (titleEl) titleEl.innerText = "Manajemen Anggota";
+                if (descEl) descEl.innerText = "Registrasi santri baru dan kelola seluruh daftar santri aktif.";
+                renderSantriTable();
+            } else if (id === 'cetak') {
+                if (titleEl) titleEl.innerText = "Pusat Cetak Kartu";
+                if (descEl) descEl.innerText = "Format cetak KTP landscape perorangan atau cetak massal 8 kartu dalam A4.";
+                updateDropdown();
+                renderSingleCard();
+            } else if (id === 'admin') {
+                if (titleEl) titleEl.innerText = "Manajemen Admin";
+                if (descEl) descEl.innerText = "Tambah, pantau, dan atur hak akses kredensial pengurus pondok.";
+                renderAdminTable();
+            } else if (id === 'pengaturan') {
+                if (titleEl) titleEl.innerText = "Konfigurasi Sistem";
+                if (descEl) descEl.innerText = "Sifat identitas pondok, logo, dan integrasi Google Sheets API.";
+                
+                const cfgName = document.getElementById('cfg-pondok-name');
+                const cfgLogo = document.getElementById('cfg-pondok-logo');
+                const cfgUrl = document.getElementById('cfg-sheet-url');
+
+                if (cfgName) cfgName.value = pondokConfig.name;
+                if (cfgLogo) cfgLogo.value = pondokConfig.logo;
+                if (cfgUrl) cfgUrl.value = pondokConfig.syncUrl;
+            }
+        }
+
+        // TOAST NOTIFICATION HELPERS
+        function showToast(title, msg, iconClass) {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toast-icon');
+            const message = document.getElementById('toast-message');
+
+            if (!toast || !icon || !message) return;
+
+            icon.className = iconClass;
+            message.innerHTML = `<strong>${title}</strong>: ${msg}`;
+            
+            toast.className = "fixed bottom-6 right-6 z-[150] transform translate-y-0 opacity-100 transition-all duration-300 flex items-center gap-3 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-white/10 max-w-md";
+            
+            setTimeout(() => {
+                toast.className = "fixed bottom-6 right-6 z-[150] transform translate-y-20 opacity-0 transition-all duration-300 flex items-center gap-3 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-white/10 max-w-md";
+            }, 4000);
+        }
+
+        function updateIdentity() {
+            const inputName = document.getElementById('cfg-pondok-name');
+            const inputLogo = document.getElementById('cfg-pondok-logo');
+            
+            if (inputName) pondokConfig.name = inputName.value;
+            if (inputLogo) pondokConfig.logo = inputLogo.value;
+            
+            saveToStorage();
+
+            const navName = document.getElementById('nav-pondok-name');
+            if (navName) navName.innerText = pondokConfig.name;
+
+            const navLogo = document.getElementById('nav-pondok-logo');
+            if (navLogo) navLogo.src = pondokConfig.logo;
+            
+            const livePondok = document.getElementById('live-card-pondok');
+            if (livePondok) livePondok.innerText = pondokConfig.name;
+
+            const liveLogo = document.getElementById('live-card-logo');
+            if (liveLogo) liveLogo.src = pondokConfig.logo;
+            
+            document.querySelectorAll('.card-pondok-text').forEach(el => el.innerText = pondokConfig.name);
+            document.querySelectorAll('.card-logo-img').forEach(el => el.src = pondokConfig.logo);
+            
+            const cfgPrev = document.getElementById('cfg-preview-logo');
+            if (cfgPrev) cfgPrev.src = pondokConfig.logo;
+        }
+
+        function saveSyncUrl() {
+            const url = document.getElementById('cfg-sheet-url').value;
+            pondokConfig.syncUrl = url;
+            saveToStorage();
+            showToast("Pengaturan Disimpan", "Google Apps Script URL berhasil disimpan.", "fa-solid fa-cloud-arrow-up text-emerald-400");
+        }
+
+        // STATISTICS RENDERING
+        function formatRupiah(num) {
+            return "Rp " + num.toLocaleString('id-ID');
+        }
+
+        function renderStats() {
+            const totalKas = dbSantri.reduce((acc, curr) => acc + curr.saldo, 0);
+            
+            const todayStr = new Date().toISOString().split('T')[0];
+            const transactionsToday = dbTransaksi.filter(t => t.tanggal.startsWith(todayStr));
+            
+            const setoranToday = transactionsToday.filter(t => t.jenis === 'Setor').reduce((acc, curr) => acc + curr.jumlah, 0);
+            const tarikanToday = transactionsToday.filter(t => t.jenis === 'Tarik').reduce((acc, curr) => acc + curr.jumlah, 0);
+
+            const sTotalKas = document.getElementById('stat-total-kas');
+            const sSetoran = document.getElementById('stat-setoran-hari-ini');
+            const sTarikan = document.getElementById('stat-tarikan-hari-ini');
+            const sTotalSantri = document.getElementById('stat-total-santri');
+
+            if (sTotalKas) sTotalKas.innerText = formatRupiah(totalKas);
+            if (sSetoran) sSetoran.innerText = formatRupiah(setoranToday);
+            if (sTarikan) sTarikan.innerText = formatRupiah(tarikanToday);
+            if (sTotalSantri) sTotalSantri.innerText = dbSantri.length + " Santri";
+        }
+
+        // DASHBOARD QUICK SEARCH & TRANSACTIONS
+        let currentSearchSantri = null;
+
+        function handleDashSearch() {
+            const q = document.getElementById('dash-search-input').value.toLowerCase().trim();
+            const resArea = document.getElementById('dash-search-result');
+            const hint = document.getElementById('search-hint');
+
+            if (q.length === 0) {
+                if (resArea) resArea.classList.add('hidden');
+                if (hint) hint.classList.remove('hidden');
+                currentSearchSantri = null;
+                return;
+            }
+
+            const match = dbSantri.find(s => s.nis.toLowerCase().includes(q) || s.nama.toLowerCase().includes(q));
+
+            if (match) {
+                currentSearchSantri = match;
+                if (resArea) resArea.classList.remove('hidden');
+                if (hint) hint.classList.add('hidden');
+
+                const scNama = document.getElementById('search-card-nama');
+                const scNis = document.getElementById('search-card-nis');
+                const scNotab = document.getElementById('search-card-notab');
+                const scKamar = document.getElementById('search-card-kamar');
+                const scAlamat = document.getElementById('search-card-alamat');
+                const scFoto = document.getElementById('search-card-foto');
+                const scSaldo = document.getElementById('search-card-saldo');
+
+                if (scNama) scNama.innerText = match.nama;
+                if (scNis) scNis.innerText = match.nis;
+                if (scNotab) scNotab.innerText = match.notab;
+                if (scKamar) scKamar.innerText = match.kamar;
+                if (scAlamat) scAlamat.innerText = match.alamat;
+                if (scFoto) scFoto.src = match.foto;
+                if (scSaldo) scSaldo.innerText = formatRupiah(match.saldo);
+            } else {
+                if (resArea) resArea.classList.add('hidden');
+                if (hint) hint.classList.remove('hidden');
+                currentSearchSantri = null;
+            }
+        }
+
+        // MODAL TRANSACTION OPERATIONS
+        function openTransactionModal(type) {
+            if (!currentSearchSantri) return;
+
+            const modal = document.getElementById('modal-transaction');
+            const title = document.getElementById('modal-title');
+            const btn = document.getElementById('modal-submit-btn');
+            const txType = document.getElementById('modal-tx-type');
+            const mNama = document.getElementById('modal-santri-nama');
+            const mNis = document.getElementById('modal-santri-nis');
+            const mNotab = document.getElementById('modal-santri-notab');
+            const mAmount = document.getElementById('modal-amount');
+            const mDesc = document.getElementById('modal-desc');
+            
+            if (txType) txType.value = type;
+            if (mNama) mNama.innerText = currentSearchSantri.nama;
+            if (mNis) mNis.innerText = currentSearchSantri.nis;
+            if (mNotab) mNotab.innerText = currentSearchSantri.notab;
+            if (mAmount) mAmount.value = '';
+            if (mDesc) mDesc.value = '';
+
+            if (type === 'setor') {
+                if (title) title.innerText = "Setoran Tabungan";
+                if (btn) {
+                    btn.className = "py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition text-xs shadow-md w-full";
+                    btn.innerText = "Proses Setor";
+                }
+            } else {
+                if (title) title.innerText = "Penarikan Tabungan";
+                if (btn) {
+                    btn.className = "py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition text-xs shadow-md w-full";
+                    btn.innerText = "Proses Tarik";
+                }
+            }
+
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function closeTransactionModal() {
+            const modal = document.getElementById('modal-transaction');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function handleProcessTransaction(e) {
+            e.preventDefault();
+            const type = document.getElementById('modal-tx-type').value;
+            const amount = parseInt(document.getElementById('modal-amount').value);
+            const desc = document.getElementById('modal-desc').value || (type === 'setor' ? "Setor Uang" : "Tarik Uang");
+
+            if (!currentSearchSantri) return;
+
+            if (type === 'tarik' && currentSearchSantri.saldo < amount) {
+                showToast("Transaksi Gagal", "Saldo tidak mencukupi untuk melakukan penarikan!", "fa-solid fa-circle-xmark text-red-500");
+                closeTransactionModal();
+                return;
+            }
+
+            // Eksekusi pembaruan saldo lokal
+            if (type === 'setor') {
+                currentSearchSantri.saldo += amount;
+            } else {
+                currentSearchSantri.saldo -= amount;
+            }
+
+            const txId = "TX-" + Date.now().toString().slice(-6);
+            const timeStr = new Date().toISOString().replace('T', ' ').slice(0, 19); // YYYY-MM-DD HH:MM:SS
+            
+            const newTx = {
+                id: txId,
+                tanggal: timeStr,
+                nis: currentSearchSantri.nis,
+                jenis: type === 'setor' ? 'Setor' : 'Tarik',
+                jumlah: amount,
+                keterangan: desc
+            };
+
+            dbTransaksi.unshift(newTx);
+            saveToStorage();
+
+            // KIRIM DATA KE GOOGLE SPREADSHEETS (BACKGROUND ACTION)
+            if (pondokConfig.syncUrl) {
+                sendToGoogleSheets({
+                    action: "addTransaction",
+                    id: txId,
+                    tanggal: timeStr,
+                    nis: currentSearchSantri.nis,
+                    jenis: type === 'setor' ? 'Setor' : 'Tarik',
+                    jumlah: amount,
+                    keterangan: desc
+                });
+            }
+
+            closeTransactionModal();
+            handleDashSearch(); // Refresh UI profile
+            renderStats();
+            renderRecentLogs();
+            
+            showToast("Berhasil", `Transaksi ${type === 'setor' ? 'Setoran' : 'Penarikan'} senilai ${formatRupiah(amount)} sukses dicatat.`, "fa-solid fa-circle-check text-emerald-400");
+        }
+
+        // GOOGLE SHEETS SINKRONISATOR
+        function sendToGoogleSheets(payload) {
+            fetch(pondokConfig.syncUrl, {
+                method: "POST",
+                mode: "no-cors",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+            .then(() => console.log("Data synced to Sheets successfully!"))
+            .catch(err => console.error("Google Sheets sync failed:", err));
+        }
+
+        // RENDER LOG LIST IN DASHBOARD
+        function renderRecentLogs() {
+            const list = document.getElementById('dash-recent-transactions');
+            if (!list) return;
+            list.innerHTML = '';
+
+            if (dbTransaksi.length === 0) {
+                list.innerHTML = `<p class="text-xs text-slate-400 italic text-center py-8">Belum ada riwayat transaksi.</p>`;
+                return;
+            }
+
+            dbTransaksi.slice(0, 10).forEach(t => {
+                const s = dbSantri.find(x => x.nis === t.nis);
+                const name = s ? s.nama : "Santri Terhapus";
+                const badge = t.jenis === 'Setor' 
+                    ? '<span class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded font-bold text-[9px] uppercase">Setor</span>'
+                    : '<span class="px-2 py-0.5 bg-red-50 text-red-600 rounded font-bold text-[9px] uppercase">Tarik</span>';
+                
+                const sign = t.jenis === 'Setor' ? '+' : '-';
+                const color = t.jenis === 'Setor' ? 'text-blue-600' : 'text-red-600';
+
+                list.innerHTML += `
+                <div class="flex items-center justify-between p-3 hover:bg-slate-50 rounded-xl border border-slate-100 transition text-xs">
+                    <div class="space-y-0.5">
+                        <div class="flex items-center gap-2">
+                            <b class="text-slate-800">${name}</b>
+                            ${badge}
+                        </div>
+                        <p class="text-[10px] text-slate-400 font-medium">${t.tanggal} | ${t.keterangan}</p>
+                    </div>
+                    <b class="${color}">${sign} ${formatRupiah(t.jumlah)}</b>
+                </div>`;
+            });
+        }
+
+        function clearHistory() {
+            showCustomConfirm(
+                "Hapus Histori Transaksi",
+                "Apakah Anda yakin ingin menghapus semua histori aktivitas harian? Tindakan ini tidak dapat dibatalkan.",
+                () => {
+                    dbTransaksi = [];
+                    saveToStorage();
+                    renderStats();
+                    renderRecentLogs();
+                    showToast("Berhasil", "Histori aktivitas harian telah dibersihkan.", "fa-solid fa-trash-can text-red-400");
+                }
+            );
+        }
+
+        // REGISTRATION PHOTO HANDLER (Convert file to base64)
+        let loadedBase64Photo = "https://placehold.co/150x200/064e3b/ffffff?text=FOTO";
+
+        function previewImageFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                loadedBase64Photo = event.target.result;
+                updateLiveCard();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // LIVE UPDATE REGISTER PREVIEW CARD
+        function updateLiveCard() {
+            const nis = document.getElementById('reg-nis').value || "000000";
+            const notab = document.getElementById('reg-notab').value || "T-00";
+            const nama = document.getElementById('reg-nama').value || "Santri Baru";
+            const kamar = document.getElementById('reg-kamar').value || "Kamar-01";
+            const alamat = document.getElementById('reg-alamat').value || "Asal Daerah";
+
+            const lNis = document.getElementById('live-card-nis-val');
+            const lNotab = document.getElementById('live-card-notab-val');
+            const lNama = document.getElementById('live-card-nama-val');
+            const lKamar = document.getElementById('live-card-kamar-val');
+            const lAlamat = document.getElementById('live-card-alamat-val');
+            const lFoto = document.getElementById('live-card-foto');
+            const lQr = document.getElementById('live-card-qr');
+
+            if (lNis) lNis.innerText = nis;
+            if (lNotab) lNotab.innerText = notab;
+            if (lNama) lNama.innerText = nama;
+            if (lKamar) lKamar.innerText = kamar;
+            if (lAlamat) lAlamat.innerText = alamat;
+            if (lFoto) lFoto.src = loadedBase64Photo;
+            
+            if (lQr) lQr.src = generateQRCodeURL(nis);
+        }
+
+        function handleRegisterSantri(e) {
+            e.preventDefault();
+            const nis = document.getElementById('reg-nis').value.trim();
+            const notab = document.getElementById('reg-notab').value.trim();
+            const nama = document.getElementById('reg-nama').value.trim();
+            const kamar = document.getElementById('reg-kamar').value.trim();
+            const alamat = document.getElementById('reg-alamat').value.trim();
+            // Ambil input Saldo Awal dari Formulir Pendaftaran
+            const saldo = parseInt(document.getElementById('reg-saldo').value) || 0;
+
+            if (dbSantri.some(s => s.nis === nis)) {
+                showToast("Pendaftaran Gagal", "Siswa dengan NIS tersebut sudah terdaftar!", "fa-solid fa-circle-exclamation text-amber-500");
+                return;
+            }
+
+            const newSantri = {
+                nis: nis,
+                notab: notab,
+                nama: nama,
+                kamar: kamar,
+                alamat: alamat,
+                foto: loadedBase64Photo,
+                saldo: saldo
+            };
+
+            dbSantri.unshift(newSantri);
+            saveToStorage();
+            
+            filteredSantri = [...dbSantri];
+            currentPage = 1;
+
+            if (pondokConfig.syncUrl) {
+                sendToGoogleSheets({
+                    action: "addSantri",
+                    nis: nis,
+                    notab: notab,
+                    nama: nama,
+                    kamar: kamar,
+                    alamat: alamat,
+                    foto: loadedBase64Photo,
+                    saldo: saldo
+                });
+            }
+
+            document.getElementById('form-santri').reset();
+            // Reset input saldo ke 0 setelah pendaftaran sukses
+            const saldoInput = document.getElementById('reg-saldo');
+            if (saldoInput) saldoInput.value = "0";
+
+            loadedBase64Photo = "https://placehold.co/150x200/064e3b/ffffff?text=FOTO";
+            updateLiveCard();
+            renderSantriTable();
+            showToast("Berhasil", `${nama} terdaftar sebagai anggota tabungan baru dengan saldo awal ${formatRupiah(saldo)}.`, "fa-solid fa-circle-check text-emerald-400");
+        }
+
+
+        // RENDER TABLE OF SANTRI WITH PAGINATION
+        function renderSantriTable() {
+            const body = document.getElementById('table-santri-body');
+            if (!body) return;
+            body.innerHTML = '';
+
+            const totalItems = filteredSantri.length;
+            const maxPage = Math.ceil(totalItems / rowsPerPage) || 1;
+            if (currentPage > maxPage) {
+                currentPage = maxPage;
+            }
+
+            if (totalItems === 0) {
+                body.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-slate-400 italic">Belum ada data anggota santri.</td></tr>`;
+                updatePaginationControls(0, 0, 0);
+                return;
+            }
+
+            const startIndex = (currentPage - 1) * rowsPerPage;
+            const endIndex = Math.min(startIndex + rowsPerPage, totalItems);
+            const pagedData = filteredSantri.slice(startIndex, endIndex);
+
+            pagedData.forEach(s => {
+                body.innerHTML += `
+                <tr class="hover:bg-slate-50/50 transition">
+                    <td class="py-3 px-4">
+                        <div class="flex items-center gap-3">
+                            <img class="w-8 h-8 rounded-full object-cover border" src="${s.foto || 'https://placehold.co/150x200/064e3b/ffffff?text=FOTO'}" onerror="this.src='https://placehold.co/150x200/064e3b/ffffff?text=FOTO'">
+                            <div>
+                                <p class="font-bold text-slate-800">${s.nama}</p>
+                                <span class="text-[10px] text-slate-400">NIS: ${s.nis}</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="py-3 px-4 font-mono font-bold text-slate-700">${s.notab}</td>
+                    <td class="py-3 px-4 font-medium text-slate-600">${s.kamar}</td>
+                    <td class="py-3 px-4 text-right font-black text-emerald-700">${formatRupiah(s.saldo)}</td>
+                    <td class="py-3 px-4 text-center">
+                        <button onclick="openEditModal('${s.nis}')" class="text-emerald-600 hover:text-emerald-800 mr-2 transition" title="Edit Anggota">
+                            <i class="fa-solid fa-pen-to-square text-sm"></i>
+                        </button>
+                        <button onclick="deleteSantri('${s.nis}')" class="text-red-500 hover:text-red-700 transition" title="Hapus Anggota">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </td>
+                </tr>`;
+            });
+
+            updatePaginationControls(startIndex + 1, endIndex, totalItems);
+        }
+
+        function updatePaginationControls(start, end, total) {
+            const startEl = document.getElementById('pag-info-start');
+            const endEl = document.getElementById('pag-info-end');
+            const totalEl = document.getElementById('pag-info-total');
+            const container = document.getElementById('pag-buttons-container');
+
+            if (!startEl || !endEl || !totalEl || !container) return;
+
+            startEl.innerText = start;
+            endEl.innerText = end;
+            totalEl.innerText = total;
+
+            container.innerHTML = '';
+
+            const totalPages = Math.ceil(total / rowsPerPage) || 1;
+
+            const prevBtn = document.createElement('button');
+            prevBtn.className = `px-2.5 py-1 rounded-lg border text-xs font-semibold transition ${currentPage === 1 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-50 hover:text-emerald-700 border-slate-200'}`;
+            prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
+            if (currentPage > 1) {
+                prevBtn.onclick = () => { currentPage--; renderSantriTable(); };
+            }
+            container.appendChild(prevBtn);
+
+            const maxVisiblePages = 5;
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+            if (endPage - startPage + 1 < maxVisiblePages) {
+                startPage = Math.max(1, endPage - maxVisiblePages + 1);
+            }
+
+            if (startPage > 1) {
+                container.appendChild(createPageBtn(1));
+                if (startPage > 2) {
+                    const dots = document.createElement('span');
+                    dots.className = 'px-1 text-slate-400 font-semibold';
+                    dots.innerText = '...';
+                    container.appendChild(dots);
+                }
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                if (i > 0) {
+                    container.appendChild(createPageBtn(i));
+                }
+            }
+
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    const dots = document.createElement('span');
+                    dots.className = 'px-1 text-slate-400 font-semibold';
+                    dots.innerText = '...';
+                    container.appendChild(dots);
+                }
+                container.appendChild(createPageBtn(totalPages));
+            }
+
+            const nextBtn = document.createElement('button');
+            nextBtn.className = `px-2.5 py-1 rounded-lg border text-xs font-semibold transition ${currentPage === totalPages ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-50 hover:text-emerald-700 border-slate-200'}`;
+            nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+            if (currentPage < totalPages) {
+                nextBtn.onclick = () => { currentPage++; renderSantriTable(); };
+            }
+            container.appendChild(nextBtn);
+        }
+
+        function createPageBtn(pageNumber) {
+            const btn = document.createElement('button');
+            btn.className = `px-2.5 py-1 rounded-lg border text-xs font-bold transition ${currentPage === pageNumber ? 'bg-emerald-600 text-white border-emerald-600' : 'text-slate-600 hover:bg-slate-50 border-slate-200'}`;
+            btn.innerText = pageNumber;
+            btn.onclick = () => { currentPage = pageNumber; renderSantriTable(); };
+            return btn;
+        }
+
+        function changeRowsPerPage(val) {
+            rowsPerPage = parseInt(val);
+            currentPage = 1;
+            renderSantriTable();
+        }
+
+        function handleListSearch() {
+            const q = document.getElementById('list-search-input').value.toLowerCase().trim();
+            currentPage = 1;
+
+            if (q === '') {
+                filteredSantri = [...dbSantri];
+            } else {
+                filteredSantri = dbSantri.filter(s => 
+                    s.nis.toLowerCase().includes(q) || 
+                    s.nama.toLowerCase().includes(q) || 
+                    s.kamar.toLowerCase().includes(q) ||
+                    s.alamat.toLowerCase().includes(q)
+                );
+            }
+            renderSantriTable();
+        }
+
+        function deleteSantri(nis) {
+            showCustomConfirm(
+                "Hapus Anggota Santri",
+                "Apakah Anda yakin ingin menghapus anggota ini? Seluruh data saldo akan hilang secara permanen dari basis data.",
+                () => {
+                    dbSantri = dbSantri.filter(s => s.nis !== nis);
+                    filteredSantri = filteredSantri.filter(s => s.nis !== nis);
+                    saveToStorage();
+                    renderSantriTable();
+                    updateDropdown();
+                    showToast("Dihapus", "Anggota santri berhasil dihapus dari database.", "fa-solid fa-trash-can text-red-400");
+                }
+            );
+        }
+
+        // EDIT SANTRI FUNCTIONS
+        function openEditModal(nis) {
+            const s = dbSantri.find(x => x.nis === nis);
+            if (!s) return;
+
+            document.getElementById('edit-orig-nis').value = s.nis;
+            document.getElementById('edit-nis').value = s.nis;
+            document.getElementById('edit-notab').value = s.notab;
+            document.getElementById('edit-nama').value = s.nama;
+            document.getElementById('edit-kamar').value = s.kamar;
+            document.getElementById('edit-alamat').value = s.alamat;
+            // Sinkronkan nilai Saldo saat ini ke dalam modal edit
+            document.getElementById('edit-saldo').value = s.saldo || 0;
+            document.getElementById('edit-preview-foto').src = s.foto;
+            
+            tempEditBase64Photo = s.foto;
+            document.getElementById('edit-foto-input').value = "";
+
+            const modal = document.getElementById('modal-edit-santri');
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            const modal = document.getElementById('modal-edit-santri');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function previewEditImageFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                tempEditBase64Photo = event.target.result;
+                document.getElementById('edit-preview-foto').src = tempEditBase64Photo;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleSaveEdit(e) {
+            e.preventDefault();
+            const origNis = document.getElementById('edit-orig-nis').value;
+            const s = dbSantri.find(x => x.nis === origNis);
+            if (!s) return;
+
+            s.notab = document.getElementById('edit-notab').value.trim();
+            s.nama = document.getElementById('edit-nama').value.trim();
+            s.kamar = document.getElementById('edit-kamar').value.trim();
+            s.alamat = document.getElementById('edit-alamat').value.trim();
+            // Ambil input Saldo setelah diedit
+            s.saldo = parseInt(document.getElementById('edit-saldo').value) || 0;
+            s.foto = tempEditBase64Photo;
+
+            saveToStorage();
+            
+            const fIndex = filteredSantri.findIndex(x => x.nis === origNis);
+            if (fIndex !== -1) {
+                filteredSantri[fIndex] = s;
+            }
+
+            renderSantriTable();
+            updateDropdown();
+            closeEditModal();
+            showToast("Berhasil Diubah", `Data santri ${s.nama} telah diperbarui dengan sukses.`, "fa-solid fa-circle-check text-emerald-400");
+        }
+
+        function toggleInputPasswordVisibility(inputId, btnEl) {
+            const input = document.getElementById(inputId);
+            const icon = btnEl.querySelector('i');
+            if (input.type === "password") {
+                input.type = "text";
+                icon.className = "fa-solid fa-eye";
+            } else {
+                input.type = "password";
+                icon.className = "fa-solid fa-eye-slash";
+            }
+        }
+
+        function toggleRowPasswordVisibility(index, btnEl) {
+            const span = document.getElementById(`adm-pass-text-${index}`);
+            const icon = btnEl.querySelector('i');
+            const isMasked = span.getAttribute('data-masked') === 'true';
+
+            if (isMasked) {
+                span.innerText = span.getAttribute('data-password');
+                span.setAttribute('data-masked', 'false');
+                icon.className = "fa-solid fa-eye text-emerald-600";
+            } else {
+                span.innerText = "••••••••";
+                span.setAttribute('data-masked', 'true');
+                icon.className = "fa-solid fa-eye-slash text-slate-400";
+            }
+        }
+
+        // RENDER ADMIN LIST TABLE
+        function renderAdminTable() {
+            const body = document.getElementById('table-admin-body');
+            if (!body) return;
+            body.innerHTML = '';
+
+            dbAdmin.forEach((admin, index) => {
+                const isCurrentUser = admin.username === currentUser;
+                const isLastAdmin = dbAdmin.length <= 1;
+                
+                const deleteButtonClass = (isCurrentUser || isLastAdmin)
+                    ? 'text-slate-300 cursor-not-allowed'
+                    : 'text-red-500 hover:text-red-700 transition';
+                const deleteActionHtml = (isCurrentUser || isLastAdmin)
+                    ? `<button class="${deleteButtonClass}" title="Tidak dapat menghapus admin utama atau sedang aktif" disabled><i class="fa-solid fa-trash-can"></i></button>`
+                    : `<button onclick="deleteAdmin('${admin.username}')" class="${deleteButtonClass}" title="Hapus Admin"><i class="fa-solid fa-trash-can"></i></button>`;
+
+                body.innerHTML += `
+                <tr class="hover:bg-slate-50/50 transition border-b">
+                    <td class="py-3 px-4">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
+                                ${admin.nama.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <p class="font-bold text-slate-800">${admin.nama}</p>
+                                ${isCurrentUser ? '<span class="text-[9px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Aktif Saat Ini</span>' : ''}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="py-3 px-4 font-semibold font-mono text-slate-600">${admin.username}</td>
+                    <td class="py-3 px-4">
+                        <div class="flex items-center gap-2 font-mono text-slate-700">
+                            <span id="adm-pass-text-${index}" data-password="${admin.password}" data-masked="true">••••••••</span>
+                            <button type="button" onclick="toggleRowPasswordVisibility(${index}, this)" class="text-slate-400 hover:text-emerald-600 transition" title="Tampilkan Password">
+                                <i class="fa-solid fa-eye-slash text-xs"></i>
+                            </button>
+                        </div>
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                        ${deleteActionHtml}
+                    </td>
+                </tr>`;
+            });
+        }
+
+        // REGISTER NEW ADMIN
+        function handleRegisterAdmin(e) {
+            e.preventDefault();
+            const nama = document.getElementById('adm-nama').value.trim();
+            const username = document.getElementById('adm-username').value.trim().toLowerCase();
+            const password = document.getElementById('adm-password').value;
+
+            if (dbAdmin.some(a => a.username === username)) {
+                showToast("Pendaftaran Gagal", "Username admin tersebut sudah terdaftar!", "fa-solid fa-circle-exclamation text-amber-500");
+                return;
+            }
+
+            const newAdmin = {
+                nama: nama,
+                username: username,
+                password: password
+            };
+
+            dbAdmin.push(newAdmin);
+            saveToStorage();
+
+            document.getElementById('form-admin').reset();
+            renderAdminTable();
+            showToast("Berhasil", `Administrator ${nama} berhasil didaftarkan.`, "fa-solid fa-circle-check text-emerald-400");
+        }
+
+        // DELETE ADMIN
+        function deleteAdmin(username) {
+            if (username === currentUser) {
+                showToast("Gagal", "Anda tidak dapat menghapus akun Anda sendiri yang sedang aktif!", "fa-solid fa-triangle-exclamation text-red-500");
+                return;
+            }
+
+            showCustomConfirm(
+                "Hapus Administrator",
+                `Apakah Anda yakin ingin menghapus akun administrator "${username}"? Hak akses sistem ini akan segera dicabut.`,
+                () => {
+                    dbAdmin = dbAdmin.filter(a => a.username !== username);
+                    saveToStorage();
+                    renderAdminTable();
+                    showToast("Dihapus", "Akun administrator telah dihapus.", "fa-solid fa-trash-can text-red-400");
+                }
+            );
+        }
+
+        function downloadExcelTemplate() {
+            const templateData = [
+                { 
+                    NIS: "202608", 
+                    No_Tabungan: "T-08", 
+                    Nama: "Muhammad Rizky", 
+                    Kamar: "Ghazali 05", 
+                    Alamat: "Pasuruan", 
+                    Foto: "https://placehold.co/150x200/064e3b/ffffff?text=Rizky", 
+                    Saldo: 100000 
+                },
+                { 
+                    NIS: "202609", 
+                    No_Tabungan: "T-09", 
+                    Nama: "Fatimatuz Zahra", 
+                    Kamar: "Aisyah 03", 
+                    Alamat: "Probolinggo", 
+                    Foto: "", 
+                    Saldo: 150000 
+                }
+            ];
+
+            const ws = XLSX.utils.json_to_sheet(templateData);
+            const wb = XLSX.utils.book_new();
+            Xcontent = XLSX.utils.book_append_sheet(wb, ws, "Template Santri");
+
+            XLSX.writeFile(wb, "Template_Import_Santri.xlsx");
+            showToast("Berhasil", "Template Excel berhasil diunduh. Silakan isi sesuai format.", "fa-solid fa-file-arrow-down text-blue-400");
+        }
+
+        // IMPORT FROM EXCEL FUNCTION
+        function importFromExcel(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                    if (jsonData.length === 0) {
+                        showToast("Import Gagal", "Dokumen Excel Anda kosong atau tidak memiliki data santri.", "fa-solid fa-triangle-exclamation text-amber-500");
+                        return;
+                    }
+
+                    let importSuccess = 0;
+                    let recordUpdated = 0;
+
+                    jsonData.forEach(row => {
+                        const nis = String(row.NIS || row.nis || '').trim();
+                        const notab = String(row.No_Tabungan || row.no_tabungan || row.notab || '').trim();
+                        const nama = String(row.Nama || row.nama || '').trim();
+                        const kamar = String(row.Kamar || row.kamar || '').trim();
+                        const alamat = String(row.Alamat || row.alamat || '').trim();
+                        const foto = String(row.Foto || row.foto || '').trim() || "https://placehold.co/150x200/064e3b/ffffff?text=FOTO";
+                        const saldo = parseInt(row.Saldo || row.saldo || 0);
+
+                        if (nis && nama) {
+                            const existingIndex = dbSantri.findIndex(s => s.nis === nis);
+                            const itemSantri = {
+                                nis: nis,
+                                notab: notab || `T-${nis.slice(-2)}`,
+                                nama: nama,
+                                kamar: kamar || "Ghazali Umum",
+                                alamat: alamat || "Tidak Diketahui",
+                                foto: foto,
+                                saldo: isNaN(saldo) ? 0 : saldo
+                            };
+
+                            if (existingIndex !== -1) {
+                                dbSantri[existingIndex] = itemSantri;
+                                recordUpdated++;
+                            } else {
+                                dbSantri.push(itemSantri);
+                                importSuccess++;
+                            }
+                        }
+                    });
+
+                    saveToStorage();
+                    filteredSantri = [...dbSantri];
+                    currentPage = 1;
+                    renderSantriTable();
+                    updateDropdown();
+                    renderStats();
+
+                    let toastMsg = `Berhasil mengimpor ${importSuccess} santri baru`;
+                    if (recordUpdated > 0) toastMsg += ` dan memperbarui ${recordUpdated} data lama.`;
+                    
+                    showToast("Sukses Import", toastMsg, "fa-solid fa-file-circle-check text-emerald-400");
+                } catch (error) {
+                    console.error(error);
+                    showToast("Gagal Membaca", "File rusak atau tidak sesuai format template.", "fa-solid fa-triangle-exclamation text-red-500");
+                }
+                e.target.value = "";
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // PRINT SECTION LOGIC
+        function setCardTheme(bgClass, subTextClass) {
+            activeThemeClass = bgClass;
+            activeThemeSubClass = subTextClass;
+
+            const liveCard = document.getElementById('live-card');
+            if (liveCard) {
+                liveCard.className = `ktp-card ${bgClass} mx-auto select-none scale-[1.1] md:scale-125 my-6`;
+                
+                const liveLogo = document.getElementById('live-card-logo');
+                if (liveLogo && liveLogo.nextElementSibling && liveLogo.nextElementSibling.querySelector('span')) {
+                    liveLogo.nextElementSibling.querySelector('span').className = `text-[7px] ${subTextClass} font-bold uppercase tracking-wider`;
+                }
+                
+                document.querySelectorAll('#live-card .text-slate-100 .grid').forEach(grid => {
+                    if (grid.firstElementChild) grid.firstElementChild.className = `col-span-4 ${subTextClass} font-semibold`;
+                });
+            }
+
+            const singlePrintArea = document.getElementById('print-area-single');
+            if (singlePrintArea) {
+                singlePrintArea.className = `ktp-card ${bgClass} shadow-2xl scale-[1.1] md:scale-125 my-8`;
+                
+                const cardSub = document.querySelector('.card-sub-text');
+                if (cardSub) cardSub.className = `text-[7px] ${subTextClass} font-bold uppercase tracking-wider card-sub-text`;
+                
+                document.querySelectorAll('.card-lbl-text').forEach(lbl => {
+                    lbl.className = `col-span-4 ${subTextClass} font-semibold card-lbl-text`;
+                });
+            }
+        }
+
+        // FILTER DROPDOWN CETAK SECARA REAL-TIME BERDASARKAN INPUT PENCARIAN
+        function filterCetakDropdown() {
+            const q = document.getElementById('search-cetak-input').value.toLowerCase().trim();
+            const sel = document.getElementById('select-santri-cetak');
+            if(!sel) return;
+
+            const filtered = dbSantri.filter(s => 
+                s.nis.toLowerCase().includes(q) || 
+                s.nama.toLowerCase().includes(q)
+            );
+
+            if (filtered.length > 0) {
+                sel.innerHTML = filtered.map(s => `<option value="${s.nis}">${s.nama} (${s.nis})</option>`).join('');
+                sel.value = filtered[0].nis;
+                renderSingleCard();
+            } else {
+                sel.innerHTML = '<option value="">Tidak ditemukan</option>';
+                const pNama = document.getElementById('preview-single-nama');
+                const pNis = document.getElementById('preview-single-nis');
+                const pNotab = document.getElementById('preview-single-notab');
+                const pKamar = document.getElementById('preview-single-kamar');
+                const pAlamat = document.getElementById('preview-single-alamat');
+                const pFoto = document.getElementById('preview-single-foto');
+                const pQr = document.getElementById('preview-single-qr');
+
+                if (pNama) pNama.innerText = '-';
+                if (pNis) pNis.innerText = '-';
+                if (pNotab) pNotab.innerText = '-';
+                if (pKamar) pKamar.innerText = '-';
+                if (pAlamat) pAlamat.innerText = '-';
+                if (pFoto) pFoto.src = 'https://placehold.co/150x200/064e3b/ffffff?text=KOSONG';
+                if (pQr) pQr.src = '';
+            }
+        }
+
+        // UPDATE DROPDOWN DAN PAGINATION KHUSUS CETAK MASAL
+        function updateDropdown() {
+            const sel = document.getElementById('select-santri-cetak');
+            const searchInput = document.getElementById('search-cetak-input');
+            if (searchInput) searchInput.value = ''; // Reset input pencarian setiap kali tab dibuka
+            if(sel) {
+                sel.innerHTML = dbSantri.map(s => `<option value="${s.nis}">${s.nama} (${s.nis})</option>`).join('');
+            }
+            updateCetakPageDropdown(); // Inisialisasi dropdown pagination halaman cetak masal
+        }
+
+        // FUNGSI UPDATE DROPDOWN PAGINATION HALAMAN CETAK MASAL (8 KARTU/A4)
+        function updateCetakPageDropdown() {
+            const sel = document.getElementById('select-page-cetak');
+            if (!sel) return;
+            sel.innerHTML = '';
+
+            const totalItems = dbSantri.length;
+            const itemsPerPage = 8;
+            const totalPages = Math.ceil(totalItems / itemsPerPage);
+
+            if (totalItems === 0) {
+                sel.innerHTML = '<option value="">Tidak ada data santri</option>';
+                return;
+            }
+
+            for (let i = 1; i <= totalPages; i++) {
+                const start = (i - 1) * itemsPerPage + 1;
+                const end = Math.min(i * itemsPerPage, totalItems);
+                sel.innerHTML += `<option value="${i}">Lembar ${i} (Data Ke ${start} - ${end})</option>`;
+            }
+        }
+
+        function renderSingleCard() {
+            const sel = document.getElementById('select-santri-cetak');
+            if(!sel || !sel.value) return;
+            const nis = sel.value;
+            const s = dbSantri.find(x => x.nis === nis);
+            if(!s) return;
+
+            const pNama = document.getElementById('preview-single-nama');
+            const pNis = document.getElementById('preview-single-nis');
+            const pNotab = document.getElementById('preview-single-notab');
+            const pKamar = document.getElementById('preview-single-kamar');
+            const pAlamat = document.getElementById('preview-single-alamat');
+            const pFoto = document.getElementById('preview-single-foto');
+            const pQr = document.getElementById('preview-single-qr');
+
+            if (pNama) pNama.innerText = s.nama;
+            if (pNis) pNis.innerText = s.nis;
+            if (pNotab) pNotab.innerText = s.notab;
+            if (pKamar) pKamar.innerText = s.kamar;
+            if (pAlamat) pAlamat.innerText = s.alamat;
+            if (pFoto) pFoto.src = s.foto;
+            
+            // High resolution QR code generator (Base64) - offline
+            if (pQr) pQr.src = generateQRCodeURL(s.nis);
+            
+            updateIdentity();
+        }
+
+        function printSingle() {
+            renderSingleCard();
+            document.body.classList.add('print-single');
+            document.body.classList.remove('print-all');
+            
+            // Memberikan jeda 500ms agar browser selesai merender gambar Base64 QR Code & Foto
+            setTimeout(() => {
+                window.print();
+            }, 500);
+        }
+
+        // FUNGSI BARU: CETAK PER LEMBAR PILIHAN (MAX 8 KARTU) UNTUK MENGHINDARI LAG
+        function printAllPage() {
+            const sel = document.getElementById('select-page-cetak');
+            if (!sel || !sel.value) return;
+
+            const pageNum = parseInt(sel.value);
+            const itemsPerPage = 8;
+            const startIndex = (pageNum - 1) * itemsPerPage;
+            const endIndex = Math.min(startIndex + itemsPerPage, dbSantri.length);
+            const pagedData = dbSantri.slice(startIndex, endIndex);
+
+            const grid = document.getElementById('all-cards-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+
+            if (pagedData.length === 0) {
+                showToast("Gagal Cetak", "Tidak ada data pada lembar ini.", "fa-solid fa-circle-exclamation text-amber-500");
+                return;
+            }
+
+            pagedData.forEach(s => {
+                const qrDataUrl = generateQRCodeURL(s.nis);
+                const cardHTML = `
+                <div class="ktp-card ${activeThemeClass}">
+                    <div class="bg-pattern absolute inset-0"></div>
+                    <div class="flex items-center gap-2 border-b border-white/20 pb-1.5 relative z-10">
+                        <img src="${pondokConfig.logo}" class="w-6 h-6 object-contain bg-white rounded-full p-0.5 shadow-sm">
+                        <div class="text-left">
+                            <h4 class="text-[7.5px] font-extrabold uppercase leading-none text-white truncate max-w-[190px]">${pondokConfig.name}</h4>
+                            <span class="text-[5.5px] ${activeThemeSubClass} font-bold uppercase tracking-wider">KARTU TABUNGAN SANTRI</span>
+                        </div>
+                    </div>
+                    <div class="flex gap-3.5 my-auto relative z-10 text-left">
+                        <img src="${s.foto}" class="w-14 h-18 bg-slate-800 rounded border border-white/30 object-cover shrink-0" onerror="this.src='https://placehold.co/150x200/064e3b/ffffff?text=FOTO'">
+                        <div class="flex-1 text-[8px] space-y-0.5 text-slate-100 self-center">
+                            <div class="grid grid-cols-12"><span class="col-span-4 ${activeThemeSubClass} font-semibold">Nama</span><span class="col-span-8">: ${s.nama}</span></div>
+                            <div class="grid grid-cols-12"><span class="col-span-4 ${activeThemeSubClass} font-semibold">NIS</span><span class="col-span-8">: ${s.nis}</span></div>
+                            <div class="grid grid-cols-12"><span class="col-span-4 ${activeThemeSubClass} font-semibold">No Tab</span><span class="col-span-8">: ${s.notab}</span></div>
+                            <div class="grid grid-cols-12"><span class="col-span-4 ${activeThemeSubClass} font-semibold">Kamar</span><span class="col-span-8">: ${s.kamar}</span></div>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-end border-t border-white/20 pt-1.5 relative z-10 text-left">
+                        <p class="text-[5px] italic text-slate-200 max-w-[65%] leading-tight">"Menabung hari ini untuk masa depan yang berkah"</p>
+                        <!-- QR Code Diperbesar w-11 h-11 -->
+                        <img class="w-11 h-11 bg-white rounded p-0.5 shadow-sm shrink-0" src="${qrDataUrl}">
+                    </div>
+                </div>`;
+                grid.innerHTML += cardHTML;
+            });
+
+            document.body.classList.add('print-all');
+            document.body.classList.remove('print-single');
+            
+            // Delay 500ms menjamin seluruh QR Code dan Foto selesai diproses sebelum dialog cetak tampil
+            setTimeout(() => {
+                window.print();
+            }, 500);
+        }
+
+        // FUNGSI ASLI: CETAK SEMUA KARTU SEKALIGUS (OPSIONAL UNTUK DATA SEDIKIT)
+        function printAll() {
+            const grid = document.getElementById('all-cards-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+
+            if (dbSantri.length === 0) {
+                showToast("Gagal Cetak", "Tidak ada data anggota untuk dicetak.", "fa-solid fa-circle-exclamation text-amber-500");
+                return;
+            }
+
+            dbSantri.forEach(s => {
+                const qrDataUrl = generateQRCodeURL(s.nis);
+                const cardHTML = `
+                <div class="ktp-card ${activeThemeClass}">
+                    <div class="bg-pattern absolute inset-0"></div>
+                    <div class="flex items-center gap-2 border-b border-white/20 pb-1.5 relative z-10">
+                        <img src="${pondokConfig.logo}" class="w-6 h-6 object-contain bg-white rounded-full p-0.5 shadow-sm">
+                        <div class="text-left">
+                            <h4 class="text-[7.5px] font-extrabold uppercase leading-none text-white truncate max-w-[190px]">${pondokConfig.name}</h4>
+                            <span class="text-[5.5px] ${activeThemeSubClass} font-bold uppercase tracking-wider">KARTU TABUNGAN SANTRI</span>
+                        </div>
+                    </div>
+                    <div class="flex gap-3.5 my-auto relative z-10 text-left">
+                        <img src="${s.foto}" class="w-14 h-18 bg-slate-800 rounded border border-white/30 object-cover shrink-0" onerror="this.src='https://placehold.co/150x200/064e3b/ffffff?text=FOTO'">
+                        <div class="flex-1 text-[8px] space-y-0.5 text-slate-100 self-center">
+                            <div class="grid grid-cols-12"><span class="col-span-4 ${activeThemeSubClass} font-semibold">Nama</span><span class="col-span-8">: ${s.nama}</span></div>
+                            <div class="grid grid-cols-12"><span class="col-span-4 ${activeThemeSubClass} font-semibold">NIS</span><span class="col-span-8">: ${s.nis}</span></div>
+                            <div class="grid grid-cols-12"><span class="col-span-4 ${activeThemeSubClass} font-semibold">No Tab</span><span class="col-span-8">: ${s.notab}</span></div>
+                            <div class="grid grid-cols-12"><span class="col-span-4 ${activeThemeSubClass} font-semibold">Kamar</span><span class="col-span-8">: ${s.kamar}</span></div>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-end border-t border-white/20 pt-1.5 relative z-10 text-left">
+                        <p class="text-[5px] italic text-slate-200 max-w-[65%] leading-tight">"Menabung hari ini untuk masa depan yang berkah"</p>
+                        <!-- QR Code Diperbesar w-11 h-11 -->
+                        <img class="w-11 h-11 bg-white rounded p-0.5 shadow-sm shrink-0" src="${qrDataUrl}">
+                    </div>
+                </div>`;
+                grid.innerHTML += cardHTML;
+            });
+
+            document.body.classList.add('print-all');
+            document.body.classList.remove('print-single');
+            
+            // Delay 500ms menjamin seluruh QR Code dan Foto selesai diproses sebelum dialog cetak tampil
+            setTimeout(() => {
+                window.print();
+            }, 500);
+        }
+
+        // HELPER SCRIPT CLIPBOARD COPY
+        function copyAppsScriptCode() {
+            const code = document.getElementById('apps-script-code').innerText;
+            const dummy = document.createElement("textarea");
+            document.body.appendChild(dummy);
+            dummy.value = code;
+            dummy.select();
+            document.execCommand("copy");
+            document.body.removeChild(dummy);
+            showToast("Berhasil disalin", "Kode skrip backend disalin ke clipboard.", "fa-solid fa-circle-check text-emerald-400");
+        }
+    </script>
+</body>
+</html>
